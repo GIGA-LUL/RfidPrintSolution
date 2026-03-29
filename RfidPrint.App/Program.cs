@@ -41,10 +41,10 @@ namespace RfidPrint.App
                     // В файле Program.cs (примерно 45-50 строка)
 
                     // Было:
-                    // services.AddSingleton<IRfidReader, Acr122uReader>();
+                    services.AddSingleton<IRfidReader, Acr122uReader>();
 
                     // Стало (для теста):
-                    services.AddSingleton<IRfidReader, FakeRfidReader>();
+                    // services.AddSingleton<IRfidReader, FakeRfidReader>();
 
                     // Worker
                     services.AddHostedService<RfidPrintWorker>();
