@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using NpgsqlTypes;
 using RfidPrint.Common.Interfaces;
 using RfidPrint.Common.Models;
 
@@ -25,23 +26,25 @@ namespace RfidPrint.Database.Repositories
             {
                 await using var conn = _dbConnection.CreateConnection();
                 await conn.OpenAsync();
+
                 const string sql = @"
                     INSERT INTO print_log (uid, computer_name, printer_name, file_path, status, error_message, printed_at)
                     VALUES (@uid, @computerName, @printerName, @filePath, @status, @errorMessage, @printedAt)";
+
                 await using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("uid", entry.Uid);
-                cmd.Parameters.AddWithValue("computerName", entry.ComputerName);
-                cmd.Parameters.AddWithValue("printerName", entry.PrinterName ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("filePath", entry.FilePath ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("status", entry.Status);
-                cmd.Parameters.AddWithValue("errorMessage", entry.ErrorMessage ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("printedAt", entry.PrintedAt);
+                cmd.Parameters.Add(new NpgsqlParameter("uid", NpgsqlDbType.Text) { Value = entry.Uid });
+                cmd.Parameters.Add(new NpgsqlParameter("computerName", NpgsqlDbType.Text) { Value = entry.ComputerName });
+                cmd.Parameters.Add(new NpgsqlParameter("printerName", NpgsqlDbType.Text) { Value = (object?)entry.PrinterName ?? DBNull.Value });
+                cmd.Parameters.Add(new NpgsqlParameter("filePath", NpgsqlDbType.Text) { Value = (object?)entry.FilePath ?? DBNull.Value });
+                cmd.Parameters.Add(new NpgsqlParameter("status", NpgsqlDbType.Text) { Value = entry.Status });
+                cmd.Parameters.Add(new NpgsqlParameter("errorMessage", NpgsqlDbType.Text) { Value = (object?)entry.ErrorMessage ?? DBNull.Value });
+                cmd.Parameters.Add(new NpgsqlParameter("printedAt", NpgsqlDbType.TimestampTz) { Value = entry.PrintedAt });
+
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding print log entry for UID {Uid}", entry.Uid);
-                throw;
+                _logger.LogError(ex, "Ошибка записи лога печати для UID: {Uid}", entry.Uid);
             }
         }
 
@@ -52,15 +55,19 @@ namespace RfidPrint.Database.Repositories
             {
                 await using var conn = _dbConnection.CreateConnection();
                 await conn.OpenAsync();
+
                 var sql = "SELECT id, uid, computer_name, printer_name, file_path, status, error_message, printed_at FROM print_log WHERE uid = @uid";
                 if (from.HasValue) sql += " AND printed_at >= @from";
                 if (to.HasValue) sql += " AND printed_at <= @to";
                 sql += " ORDER BY printed_at DESC";
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("uid", uid);
-                if (from.HasValue) cmd.Parameters.AddWithValue("from", from.Value);
-                if (to.HasValue) cmd.Parameters.AddWithValue("to", to.Value);
+                cmd.Parameters.Add(new NpgsqlParameter("uid", NpgsqlDbType.Text) { Value = uid });
+
+                if (from.HasValue)
+                    cmd.Parameters.Add(new NpgsqlParameter("from", NpgsqlDbType.TimestampTz) { Value = from.Value });
+                if (to.HasValue)
+                    cmd.Parameters.Add(new NpgsqlParameter("to", NpgsqlDbType.TimestampTz) { Value = to.Value });
 
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -77,13 +84,12 @@ namespace RfidPrint.Database.Repositories
                         PrintedAt = reader.GetDateTime(7)
                     });
                 }
-                return list;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving logs for UID {Uid}", uid);
-                throw;
+                _logger.LogError(ex, "Ошибка получения логов для UID: {Uid}", uid);
             }
+            return list;
         }
     }
 }

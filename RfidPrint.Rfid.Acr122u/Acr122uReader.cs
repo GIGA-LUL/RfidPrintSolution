@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using FrApp42.ACR122U;
 using RfidPrint.Rfid;
+using PCSC; // Необходим для прямого обращения к подсистеме смарт-карт
 
 namespace RfidPrint.Rfid.Acr122u
 {
@@ -25,17 +26,19 @@ namespace RfidPrint.Rfid.Acr122u
             {
                 try
                 {
-                    _reader = new Reader();
+                    // 1. Проверяем службу и наличие ридеров. 
+                    // Если что-то не так — метод выбросит исключение и остановит поток.
+                    CheckConnectedReaders();
 
-                    // Подписываемся на события
+                    // 2. Инициализация монитора событий (только если проверка выше прошла успешно)
+                    _reader = new Reader();
                     _reader.Connected += OnReaderConnected;
                     _reader.Disconnected += OnReaderDisconnected;
                     _reader.Inserted += OnCardInserted;
                     _reader.Removed += OnCardRemoved;
 
-                    _logger.LogInformation("FrApp42.ACR122U reader initialized, waiting for cards...");
+                    _logger.LogInformation("Мониторинг событий считывателя запущен, ожидаем метки...");
 
-                    // Ожидаем отмены
                     while (!cancellationToken.IsCancellationRequested)
                     {
                         Thread.Sleep(1000);
@@ -43,12 +46,12 @@ namespace RfidPrint.Rfid.Acr122u
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to initialize ACR122U reader");
+                    // Логируем критическую ошибку. Воркер в Service перехватит её и остановится.
+                    _logger.LogCritical(ex, "Критическая ошибка: инициализация считывателя невозможна.");
                     throw;
                 }
                 finally
                 {
-                    // Отписываемся от событий
                     if (_reader != null)
                     {
                         _reader.Connected -= OnReaderConnected;
@@ -60,25 +63,53 @@ namespace RfidPrint.Rfid.Acr122u
             }, cancellationToken);
         }
 
+        private void CheckConnectedReaders()
+        {
+            try
+            {
+                var contextFactory = ContextFactory.Instance;
+                using var context = contextFactory.Establish(SCardScope.System);
+                var readerNames = context.GetReaders();
+
+                if (readerNames == null || readerNames.Length == 0)
+                {
+                    // Считыватель не подключен. Бросаем исключение.
+                    throw new InvalidOperationException("Аппаратный считыватель ACR122U физически не обнаружен в USB-порту.");
+                }
+
+                _logger.LogInformation("Обнаружены аппаратные считыватели: {Readers}", string.Join(", ", readerNames));
+            }
+            catch (PCSC.Exceptions.NoServiceException ex)
+            {
+                // Служба смарт-карт отключена. Бросаем понятное исключение.
+                throw new InvalidOperationException("Системная служба 'Смарт-карта' (SCardSvr) отключена в ОС. Работа невозможна.", ex);
+            }
+            catch (Exception ex) when (ex is not InvalidOperationException)
+            {
+                // Любые другие непредвиденные ошибки PC/SC
+                throw new InvalidOperationException("Не удалось опросить подсистему PC/SC.", ex);
+            }
+        }
+
         private void OnReaderConnected(string readerName)
         {
-            _logger.LogInformation("Reader connected: {ReaderName}", readerName);
+            _logger.LogInformation("Считыватель подключен: {ReaderName}", readerName);
         }
 
         private void OnReaderDisconnected(string readerName)
         {
-            _logger.LogWarning("Reader disconnected: {ReaderName}", readerName);
+            _logger.LogWarning("Считыватель отключен: {ReaderName}", readerName);
         }
 
         private void OnCardInserted(string uid)
         {
-            _logger.LogInformation("Card inserted: UID={Uid}", uid);
+            _logger.LogInformation("Обнаружена метка. UID: {Uid}", uid);
             OnTagRead(uid);
         }
 
         private void OnCardRemoved()
         {
-            _logger.LogInformation("Card removed");
+            _logger.LogDebug("Метка убрана со считывателя"); // Изменено на Debug, чтобы не засорять логи
         }
 
         public override void Dispose()
@@ -87,7 +118,7 @@ namespace RfidPrint.Rfid.Acr122u
             lock (_lock)
             {
                 if (_disposed) return;
-                _reader = null; // Библиотека не требует явного Dispose
+                _reader = null;
                 _disposed = true;
             }
             GC.SuppressFinalize(this);

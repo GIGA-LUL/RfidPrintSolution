@@ -38,8 +38,13 @@ namespace RfidPrint.App
                     // Printing
                     services.AddSingleton<IPrintService, PrintService>();
 
-                    // RFID (ACR122U)
-                    services.AddSingleton<IRfidReader, Acr122uReader>();
+                    // В файле Program.cs (примерно 45-50 строка)
+
+                    // Было:
+                    // services.AddSingleton<IRfidReader, Acr122uReader>();
+
+                    // Стало (для теста):
+                    services.AddSingleton<IRfidReader, FakeRfidReader>();
 
                     // Worker
                     services.AddHostedService<RfidPrintWorker>();
