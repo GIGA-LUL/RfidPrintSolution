@@ -1,0 +1,42 @@
+name: rfid-print-app
+version: '1.0'
+summary: RFID-triggered printing service
+description: |
+  Service that listens to RFID reader (ACR122U) and prints files based on card UID.
+  Uses PostgreSQL database for mapping and CUPS for printing.
+
+grade: stable
+confinement: strict
+base: core22
+
+apps:
+  rfid-print-app:
+    command: bin/RfidPrint.App
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+      - raw-usb
+      - cups-control
+      - system-observe
+    environment:
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+
+parts:
+  rfid-print-app:
+    plugin: dotnet
+    dotnet-runtime: net8.0
+    source: .
+    project: RfidPrint.App/RfidPrint.App.csproj
+    build-attributes:
+      - no-patchelf
+    stage-packages:
+      - libusb-1.0-0
+      - libpcsclite1
+      - cups-client
+      - pcscd
+    build-packages:
+      - libusb-1.0-0-dev
+      - libpcsclite-dev
+    prime:
+      - -usr/lib/x86_64-linux-gnu/libcuda*
