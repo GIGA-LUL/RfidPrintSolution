@@ -6,3 +6,31 @@
 2. Соберите проект.
 3. Настройте appsettings.json для подключения к базе данных.
 4. Запустите программу.
+
+### Скрипт создания структуры в PostgreSQL:
+~~~~sql
+CREATE TABLE IF NOT EXISTS card_mappings (
+    id SERIAL PRIMARY KEY,
+    uid TEXT NOT NULL UNIQUE,
+    file_path TEXT NOT NULL,
+    printer_name TEXT,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS print_log (
+    id BIGSERIAL PRIMARY KEY,
+    uid TEXT NOT NULL,
+    computer_name TEXT NOT NULL,
+    printer_name TEXT,
+    file_path TEXT,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    printed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO card_mappings (uid, file_path, description)
+VALUES ('123123123123', 'C:\Test\test.pdf', 'Тестовая карта')
+ON CONFLICT (uid) DO NOTHING;
+~~~~
